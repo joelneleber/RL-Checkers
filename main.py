@@ -70,6 +70,8 @@ class Board:
     white_wins: bool = False
     draw: bool = False
     stop_probability: float = 0
+    white_policy = 1
+    black_policy = 0
 
     # Setup the board in the default configuration
     def __init__(self):
@@ -249,6 +251,7 @@ class Board:
                     self.board_array[ky[i] - 2][kx[i] - 2] == 0:
                 add_move(possible_moves, (ky[i], kx[i]), (ky[i] - 2, kx[i] - 2))
 
+        # No pieces left, game over
         if len(possible_moves) == 0:
             self.endGame()
 
@@ -256,6 +259,7 @@ class Board:
 
     def move(self, x: int, y: int, next_x: int, next_y: int, is_secondary: bool, auto: bool) -> bool:
         """
+        Move a piece from one position to another
 
         :param x: current x location
         :param y: current y location
@@ -265,6 +269,7 @@ class Board:
         :param auto: is this game being played automatically or by a user
         :return:
         """
+
         if is_secondary:
             possible_moves = self.get_single_moves(x, y)
         else:
@@ -311,13 +316,21 @@ class Board:
         :return:
         """
         if auto:
+            # Tie if there are no moves left
             if len(actions.keys()) == 0:
                 self.endGame()
                 return False
+
             if self.white_move:
-                self.one_step_lookahead_policy(actions, secondary)
+                if self.white_policy == 0:
+                    self.random_policy(actions, secondary)
+                elif self.white_policy == 1:
+                    self.one_step_lookahead_policy(actions, secondary)
             else:
-                self.random_policy(actions, secondary)
+                if self.black_policy == 0:
+                    self.random_policy(actions, secondary)
+                elif self.black_policy == 1:
+                    self.one_step_lookahead_policy(actions, secondary)
         else:
             if secondary:
                 if len(actions) != 1 or len(actions[random.choice(list(actions.keys()))]) != 0:
@@ -354,6 +367,8 @@ class Board:
 
         :return: void
         """
+        if self.game_over:
+            return
         if np.any(self.board_array < 0) and not np.any(self.board_array > 0):
             print("Black wins!")
         elif np.any(self.board_array > 0) and not np.any(self.board_array < 0):
@@ -376,6 +391,8 @@ class Board:
         """
         Takes a random move from a random piece
 
+        Policy number: 0
+
         :param actions: a dictionary of moves from starting location to ending location
         :param secondary: is this a subsequent move
         :return: void
@@ -393,6 +410,8 @@ class Board:
         """
         Calculates the reward from each piece and each action then takes the greatest rewards move.
 
+        Policy number: 1
+
         :param actions: a dictionary of moves from starting location to ending location
         :param secondary: is this a subsequent move
         :return: void
@@ -403,6 +422,7 @@ class Board:
             for move in actions[piece]:
                 temp = Board()
                 temp.board_array = copy.deepcopy(self.board_array)
+                temp.white_move = self.white_move
                 temp.move(piece[0], piece[1], move[0], move[1], False, True)
                 add_move(rewards, temp.reward(), (piece, move))
         self.board_array = c_board
@@ -411,11 +431,13 @@ class Board:
             return
         if self.white_move:
             best = max(rewards.keys())
-            self.move(rewards[best][0][0][0], rewards[best][0][0][1], rewards[best][0][1][0], rewards[best][0][1][1],
+            next_move = random.choice(rewards[best])
+            self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
                       secondary, True)
         else:
             best = min(rewards.keys())
-            self.move(rewards[best][0][0][0], rewards[best][0][0][1], rewards[best][0][1][0], rewards[best][0][1][1],
+            next_move = random.choice(rewards[best])
+            self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
                       secondary, True)
 
 
@@ -425,6 +447,8 @@ if __name__ == "__main__":
     white_wins = 0
     for _ in range(1000):
         current_board = Board()
+        current_board.black_policy = 1
+        current_board.white_policy = 1
         still_playing: bool = True
         while still_playing:
             #  White
@@ -447,7 +471,7 @@ if __name__ == "__main__":
             white_wins += 1
         else:
             black_wins += 1
-        current_board.print_board()
+        # current_board.print_board()
 
     print("Draws:", draws)
     print("White wins:", white_wins)
