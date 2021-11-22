@@ -10,12 +10,19 @@ import string
 import numpy as np
 import copy
 
+# # Faster Computation
+# import multiprocessing
+# from joblib import Parallel, delayed
+# from threading import Lock
+# import dill as pickle
+
+# core_count = multiprocessing.cpu_count()
+
 # Constants for pieces
 BLACK = -1
 WHITE = 1
 
 debug = False
-logging = False
 
 # Array values to string for printing
 piece_string = {
@@ -25,6 +32,54 @@ piece_string = {
     -1: "B ",
     -2: "BK",
 }
+
+
+class BoardItem:
+    board = None
+    last_move = None
+    next = None
+
+    def __init__(self, b, lm):
+        self.board = b
+        self.last_move = lm
+
+
+class BoardStack:
+    stack_head = None
+
+    def push_board(self, b, last_move):
+        if not self.stack_head:
+            self.stack_head = BoardItem(b, last_move)
+
+        cur = self.stack_head
+        while cur.next:
+            cur = cur.next
+
+        cur.next = BoardItem(b, last_move)
+
+    def pop_board(self):
+        if not self.stack_head:
+            return None
+
+        cur = self.stack_head
+        while self.stack_head.next:
+            if not cur.next.next:
+                temp = cur.next
+                cur.next = None
+                return temp
+            cur = cur.next
+        return None
+
+    def size(self):
+        if not self.stack_head:
+            return 0
+
+        count = 0
+        cur = self.stack_head
+        while cur.next is not None:
+            count += 1
+            cur = cur.next
+        return count
 
 
 def view_coordinates_board_coordinates(input_coordinates: str) -> (int, int):
@@ -70,23 +125,33 @@ def add_move(dic, key, value):
         dic[key] = [value]
 
 
+# def add_reward(lock, x: int, y: int, new_x: int, new_y: int, secondary: bool, auto: bool, c_board,
+#                w_move):
+#     temp = Board()
+#     temp.board_array = c_board
+#     temp.white_move = w_move
+#     temp.move(x, y, new_x, new_y, secondary, auto)
+#     lock.acquire()
+#     # add_move(dic, temp.reward(), ((x, y), (new_x, new_y)))
+#     lock.release()
+
+
 class Board:
     board_array = np.zeros((8, 8), dtype=int)
-    last_board_array = np.zeros((8,8), dtype=int)
     white_move: bool = True
     game_over: bool = False
     white_wins: bool = False
     draw: bool = False
+    logging: bool = False
     stop_probability: float = 0
     white_policy: int = 1
     black_policy: int = 0
     to_file = None
     last_move = ((0, 0), (0, 0))
+    board_stack = None
 
     # Setup the board in the default configuration
-    def __init__(self, outfile = None):
-        if logging:
-            self.to_file = outfile
+    def __init__(self, outfile=None):
         for i in range(8):
             for j in range(8):
                 if i % 2 == 0:
@@ -105,6 +170,12 @@ class Board:
                             self.board_array[i][j] = WHITE
                         else:
                             self.board_array[i][j] = 0
+
+        if outfile:
+            self.logging = True
+            self.to_file = outfile
+            self.board_stack = BoardStack()
+            self.board_stack.push_board(copy.deepcopy(self.board_array), ((0, 0), (0, 0)))
 
     def print_board(self):
         """
@@ -135,13 +206,22 @@ class Board:
         print()
 
     def log(self):
-        to_file.write(np.array2string(current_board.last_board_array, threshold=100, max_line_width=np.inf,
-                                      separator=',').replace('\n', '') + "\t")  # Write the last_board
-        last_reward = current_board.reward()
-        to_file.write(str(current_board.last_move) + "\t")  # Write the last move
-        to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
-                                      separator=',').replace('\n', '') + "\t")  # Write the new board
-        to_file.write(str(last_reward - current_board.reward()) + "\n")  # Write the reward change from this move
+        d_board = self.board_stack.pop_board()
+        cb = copy.deepcopy(self.board_array)
+        while self.board_stack.size():
+            next_board = self.board_stack.pop_board()
+
+            self.to_file.write(np.array2string(d_board.board, threshold=100, max_line_width=np.inf,
+                                               separator=',').replace('\n', '') + "\t")  # Write the last_board
+            self.board_array = d_board.board
+            last_reward = self.reward()
+            self.board_array = next_board.board
+            self.to_file.write(str(d_board.last_move) + "\t")  # Write the last move
+            self.to_file.write(np.array2string(next_board.board, threshold=100, max_line_width=np.inf,
+                                               separator=',').replace('\n', '') + "\t")  # Write the new board
+            self.to_file.write(str(last_reward - self.reward()) + "\n")  # Write the reward change from this move
+            d_board = next_board
+        self.board_array = cb
 
     def get_single_moves(self, y: int, x: int):
         """
@@ -290,9 +370,9 @@ class Board:
         :param auto: is this game being played automatically or by a user
         :return:
         """
-        # Greatly slows down program but makes single statement logging possible
-        if logging:
-            self.last_board_array = copy.deepcopy(self.board_array)
+        # Greatly slows down program but makes board logging possible, add current_board to the stack
+        if self.logging:
+            self.board_stack.push_board(copy.deepcopy(self.board_array), ((x, y), (next_x, next_y)))
 
         if is_secondary:
             possible_moves = self.get_single_moves(x, y)
@@ -325,12 +405,7 @@ class Board:
                     print("Capture")
                 self.board_array[int((x + next_x) / 2)][int((y + next_y) / 2)] = 0
                 next_moves = self.get_single_moves(next_x, next_y)
-                if logging:
-                    self.log()
                 self.play(auto, next_moves, True)
-            elif logging:
-                    self.log()
-
             return True
         return False
 
@@ -343,6 +418,8 @@ class Board:
         :param secondary: is this a subsequent move
         :return:
         """
+        if self.logging:
+            self.board_stack.push_board(copy.deepcopy(self.board_array), ((0, 0), (0, 0)))
         if auto:
             # Tie if there are no moves left
             if len(actions.keys()) == 0:
@@ -391,6 +468,11 @@ class Board:
         # If this is not a secondary move, flip whose turn it is (this happens after all secondary moves are made)
         if not secondary:
             self.white_move = not self.white_move  # Flip whose turn it is
+
+            # Log all the moves that were made this turn
+            if self.logging:
+                if self.last_move != ((0, 0), (0, 0)):
+                    self.log()
         return True
 
     def endgame(self):
@@ -449,7 +531,15 @@ class Board:
         :return: void
         """
         rewards = dict()
+        # lock = Lock()
         c_board = copy.deepcopy(self.board_array)
+
+        # Parallel(n_jobs=core_count)(
+        #     delayed(add_reward)(lock, piece[0], piece[1], move[0], move[1], secondary, True,
+        #                         copy.deepcopy(self.board_array), copy.deepcopy(self.white_move)) for piece in
+        #     actions.keys()
+        #     for move in actions[piece])
+
         for piece in actions.keys():
             for move in actions[piece]:
                 temp = Board()
@@ -461,6 +551,7 @@ class Board:
 
         if len(rewards.keys()) == 0:
             return
+
         if self.white_move:
             best = max(rewards.keys())
             next_move = random.choice(rewards[best])
@@ -497,51 +588,64 @@ if __name__ == "__main__":
     draws = 0
     black_wins = 0
     white_wins = 0
-    y = np.array([[-1, 0, 2, 0, 0, 0,-1, 0], [ 0, 0, 0,-1, 0,-1, 0,-1], [ 0, 0, 0, 0,-1, 0,-1, 0], [ 0,-1, 0,-1, 0, 0, 0,-1], [ 0, 0, 0, 0, 1, 0, 1, 0], [ 0, 1, 0, 1, 0, 1, 0, 0], [ 1, 0, 0, 0, 1, 0, 1, 0], [ 0, 1, 0, 1, 0, 0, 0, 1]])
-    x = np.array([[-1, 0, 2, 0, 2, 0,-1, 0], [ 0, 0, 0, 0, 0,-1, 0,-1], [ 0, 0, 0, 0,-1, 0,-1, 0], [ 0,-1, 0, 0, 0, 0, 0,-1], [ 0, 0, 0, 0, 0, 0, 1, 0], [ 0, 1, 0, 1, 0, 1, 0, 0], [ 1, 0, 0, 0, 1, 0, 1, 0], [ 0, 1, 0, 1, 0, 0, 0, 1]])
-    for _ in range(10):
-        current_board = Board()
-        current_board.board_array = x
-        current_board.print_board()
-        current_board.board_array = y
-        current_board.print_board()
-        break
-        current_board.black_policy = 1
-        current_board.white_policy = 1
-        still_playing: bool = True
+    Y = [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 2], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, -2, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]]
+    X = [[0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 2], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, -2, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]]
+    y = np.array(Y)
+    x = np.array(X)
+    for _ in range(1):
+        # current_board = Board()
+        #
+        # current_board.board_array = x
+        # current_board.print_board()
+        # current_board.board_array = y
+        # current_board.print_board()
+        # break
+
         with open("./game_records/" + str(get_next_csv_number()) + ".tsv", "w") as to_file:
+            current_board = Board(to_file)
+            current_board.board_array = np.array(Y)
+            current_board.white_move = False
+
+            current_board.black_policy = 1
+            current_board.white_policy = 1
+            still_playing: bool = True
+
             while still_playing:
+                print(current_board.board_stack.size())
+
                 #  White
-                to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
-                                              separator=',').replace('\n', '') + "\t")  # Write the current board
-                old_reward = current_board.reward()
+                # to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
+                #                               separator=',').replace('\n', '') + "\t")  # Write the current board
+                # old_reward = current_board.reward()
 
                 #  Playing
                 moves = current_board.get_possible_moves()
                 still_playing = current_board.play(True, moves, False)
                 #  Recording
-                to_file.write(str(current_board.last_move) + "\t")  # Write the last move
-                to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
-                                              separator=',').replace('\n', '') + "\t")  # Write the new board
-                to_file.write(str(old_reward - current_board.reward()) + "\n")  # Write the reward change from this move
-
+                # to_file.write(str(current_board.last_move) + "\t")  # Write the last move
+                # to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
+                #                               separator=',').replace('\n', '') + "\t")  # Write the new board
+                # to_file.write(str(old_reward - current_board.reward()) + "\n")  # Write the reward change from this move
+                # break
                 if not still_playing:
                     break
 
                 #  Black
-                old_reward = current_board.reward()
-                to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
-                                              separator=',').replace('\n', '') + "\t")  # Write the current board
+                # old_reward = current_board.reward()
+                # to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
+                #                               separator=',').replace('\n', '') + "\t")  # Write the current board
 
                 #  Playing
                 moves = current_board.get_possible_moves()
                 still_playing = current_board.play(True, current_board.get_possible_moves(), False)
 
                 #  Recording
-                to_file.write(str(current_board.last_move)+ "\t")  # Write the last move
-                to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
-                                              separator=',').replace('\n', '') + "\t")  # Write the new board
-                to_file.write(str(old_reward - current_board.reward()) + "\n")  # Write the reward change from this move
+                # to_file.write(str(current_board.last_move)+ "\t")  # Write the last move
+                # to_file.write(np.array2string(current_board.board_array, threshold=100, max_line_width=np.inf,
+                #                               separator=',').replace('\n', '') + "\t")  # Write the new board
+                # to_file.write(str(old_reward - current_board.reward()) + "\n")  # Write the reward change from this move
 
             if current_board.draw:
                 draws += 1
