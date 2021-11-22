@@ -616,7 +616,7 @@ if __name__ == "__main__":
     draws = 0
     black_wins = 0
     white_wins = 0
-    for _ in range(507):
+    for _ in range(200_000):
         with open("./game_records/" + str(get_next_csv_number()) + ".tsv", "w") as to_file:
             current_board = Board(to_file)
             current_board.white_move = False
