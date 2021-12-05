@@ -1,5 +1,5 @@
 
-delta = 0.009 #once we get code running, we'll let it go for a while, see what it converges to, and set delta accordingly
+elta = 0.009 #once we get code running, we'll let it go for a while, see what it converges to, and set delta accordingly
 alpha = #step sizes
 theta =
 
@@ -16,19 +16,21 @@ vrs = 0  # of our pieces that are vulnerable (opponent could take on their next 
 vro = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
 vks = 0  # of our pieces that are vulnerable (opponent could take on their next turn)
 vko = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
+#check to see if we can make a king --> ADD A NEW FEATURE FOR THIS!!!!
 
 def calculate_phi_vars(board): #take the current state (board) and calculate and set our vars
-count_arr = np.bincount(board)
+    count_arr = np.bincount(board) #counts the number of each type of pieces on the board (i.e. how many of our regular pieces, how how many of our kings, etc.)
 
-ks = count_arr[2]
-ko = count_arr[-2]
-rs = count_arr[1]
-ro = count_arr[-2]
+    ks = count_arr[2]
+    ko = count_arr[-2]
+    rs = count_arr[1]
+    ro = count_arr[-2]
 
-vrs =
-vro =
-vks =
-vko =
+    #maybe use get_single_moves() or  get_possible_moves()
+    vrs =
+    vro =
+    vks =
+    vko =
 
 #once we get code running, we'll let it go for a while, see what it converges to, and set delta accordingly
 while >= delta:  #to pick our
