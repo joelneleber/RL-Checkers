@@ -587,6 +587,26 @@ class Board:
             next_move = random.choice(rewards[best])
             self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
                       secondary, True)
+    def policy_gradient():
+        """
+        Attempting to implement Algorithm 4.1 in Lecture 10 notes.
+
+        Inputs: 
+        A stochastic dynamic program
+        A feature function phi
+        Monte-Carlo sample size M (If time allows we will try multiple)
+        Step sizes \alpha_0,... 
+        Gradient bound \delta
+
+        Output: Parameter \theta \in R^K, used to construct the randomized policy
+
+        """ 
+
+        #initialize \theta^0 arbitrarily
+        theta = 0
+        while 
+
+
 
 
 def get_next_csv_number() -> int:
