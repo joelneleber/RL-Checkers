@@ -8,5 +8,5 @@ class Policy(Enum):
     ROLLOUTS = 2
     LSTD = 3
     POLICY_GRADIENT = 4
-    MULTI_STEP_LOOKAHEAD = 1
+    MULTI_STEP_LOOKAHEAD = 5
 
