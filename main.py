@@ -10,6 +10,8 @@ import string
 import numpy as np
 import copy
 
+from PolicyEnum import Policy
+
 # Constants for pieces
 BLACK = -1
 WHITE = 1
@@ -159,8 +161,8 @@ class Board:
     draw: bool = False
     logging: bool = False
     stop_probability: float = 0
-    white_policy: int = 1
-    black_policy: int = 0
+    white_policy: int = Policy.ONE_STEP_LOOKAHEAD
+    black_policy: int = Policy.RANDOM
     to_file = None
     last_move = ((0, 0), (0, 0))
     board_stack = None
@@ -455,14 +457,14 @@ class Board:
                 return False
 
             if self.white_move:
-                if self.white_policy == 0:
+                if self.white_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
-                elif self.white_policy == 1:
+                elif self.white_policy == Policy.ONE_STEP_LOOKAHEAD:
                     self.one_step_lookahead_policy(actions, secondary)
             else:
-                if self.black_policy == 0:
+                if self.black_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
-                elif self.black_policy == 1:
+                elif self.black_policy == Policy.ONE_STEP_LOOKAHEAD:
                     self.one_step_lookahead_policy(actions, secondary)
         else:
             self.print_board()
@@ -556,8 +558,6 @@ class Board:
         """
         Calculates the reward from each piece and each action then takes the greatest rewards move.
 
-        Policy number: 1
-
         :param actions: a dictionary of moves from starting location to ending location
         :param secondary: is this a subsequent move
         :return: void
@@ -587,6 +587,16 @@ class Board:
             next_move = random.choice(rewards[best])
             self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
                       secondary, True)
+
+    def rollouts_policy(self, actions, secondary):
+        """
+        uses one step lookahead + simulates remainder of game using heuristic policy to choose action
+
+        :param actions: a dictionary of moves from starting location to ending location
+        :param secondary: is this a subsequent move
+        :return: void
+        """
+        pass
 
 
 def get_next_csv_number() -> int:
@@ -621,8 +631,8 @@ if __name__ == "__main__":
             current_board = Board(to_file)
             current_board.white_move = False
 
-            current_board.black_policy = 1
-            current_board.white_policy = 1
+            current_board.black_policy = Policy.ONE_STEP_LOOKAHEAD
+            current_board.white_policy = Policy.ONE_STEP_LOOKAHEAD
             still_playing: bool = True
 
             while still_playing:
