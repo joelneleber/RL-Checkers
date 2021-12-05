@@ -26,7 +26,11 @@ def calculate_phi_vars(board): #take the current state (board) and calculate and
     rs = count_arr[1]
     ro = count_arr[-2]
 
-    #maybe use get_single_moves() or  get_possible_moves()
+    #maybe use get_single_moves() or get_possible_moves()
+    #we're trying to see if we can make captures or make pieces kings (or if our opponent can)
+        #check 426 for info on captures and 420-423 for kings
+
+    #line 428 in code may also be helpful: take abs of x or y from old x location to new x location
     vrs =
     vro =
     vks =
