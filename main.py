@@ -460,11 +460,15 @@ class Board:
                     self.random_policy(actions, secondary)
                 elif self.white_policy == 1:
                     self.one_step_lookahead_policy(actions, secondary)
+                elif self.white_policy == 10: 
+                    self.pi_theta_policy_gradient(actions, secondary)
             else:
                 if self.black_policy == 0:
                     self.random_policy(actions, secondary)
                 elif self.black_policy == 1:
                     self.one_step_lookahead_policy(actions, secondary)
+                elif self.black_policy == 10: 
+                    self.pi_theta_policy_gradient(actions, secondary)
         else:
             self.print_board()
             print(f"Moves: {actions}")
@@ -588,6 +592,130 @@ class Board:
             next_move = random.choice(rewards[best])
             self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
                       secondary, True)
+
+
+    #phi = lambda ks, ko, rs, ro, vs, vo:[2*ks, -2*ko, rs, ro, -3*vrs, 3*vro, -5*vks, 5*vko] #defining our feature function for policy gradient
+    #ks = 0  # of kings that we (s for self) have
+    #ko = 0  # of kings the opponent has
+    #rs = 12 # of regular pieces we have
+    #ro = 12 # of regular pieces the opponent has
+    #vrs = 0  # of our pieces that are vulnerable (opponent could take on their next turn)
+    #vro = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
+    #vks = 0  # of our pieces that are vulnerable (opponent could take on their next turn)
+    #vko = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
+
+    def phi(self, s, a):
+        '''
+        Our phi is now complex enough
+        that we can't just make it a lambda...
+
+        s: current state (the board (self.board))
+        a: an action to take--what will the effects of this action be on the state?
+
+        Calculate the phi of the state s of the board AFTER taking this action!
+        '''
+        #counts the number of each type of pieces on the board 
+        #(i.e. how many of our regular pieces, how how many of our kings, etc.)
+        #count_arr = np.bincount(self.board)
+        #ks = count_arr[2]
+        #ko = count_arr[-2]
+        #rs = count_arr[1]
+        #ro = count_arr[-2]
+
+        #a: an action to take--what will the effects of this action be on the state?
+        #action is a tuple containing a piece's x and y and a move's x and y
+
+        #For now let's assume we will only apply policy gradient to white
+        temp = Board()
+        temp.board_array = copy.deepcopy(self.board_array)
+        temp.white_move = self.white_move
+
+        # a[0] = x
+        # a[1] = y
+        # a[2] = new_x
+        # a[3] = new_y
+
+         
+        # Needs to not be a secondary move.
+        temp.move(a[0], a[1], a[2], a[3], False, True)
+ 
+        white_moves = get_possible_moves()
+        temp.white_move = False
+        black_moves = get_possible_moves()
+        temp.white_move = True
+        
+        vrs = 0
+        vro = 0
+        vks = 0
+        vko = 0
+        
+        for w in white_moves:
+            if abs(x - next_x) > 1:
+            #need to do this
+
+
+        # Capture
+       
+
+        phi_result [2*np.bincount(s)[2], #ks
+                        -2*np.bincount(s)[-2], #ko
+                            1 * np.bincount(s)[1], #rs
+                            -2 * np.bincount(s)[-1], #ro
+                            -3*vrs,
+                            3*vro, 
+                            -5*vks, 
+                            5*vko]
+        
+
+
+    def pi_theta_policy_gradient(self, actions, current_action, theta, secondary):
+
+    """
+    A softmax policy that takes in weights "theta" from policy gradient
+
+    Policy number: 10
+
+    :param actions: a dictionary of moves from starting location to ending location
+    :param current_action: the action being passed into pi_theta
+    :param secondary: is this a subsequent move
+    :param theta: weights theta for policy gradient
+
+    :return: the "probability" of this action being the best action to take
+    """
+    rewards = dict()
+
+  
+    e_cur_a = exp((phi(s,a).T) @ theta)
+
+    # Try to make one move for all your pieces (whites)
+    # And save the reward(s)
+    for piece in actions.keys():
+        for move in actions[piece]:
+            temp = Board()
+            temp.board_array = copy.deepcopy(self.board_array)
+            temp.white_move = self.white_move
+            temp.move(piece[0], piece[1], move[0], move[1], secondary, True)
+            add_move(rewards, temp.reward(), (piece, move))
+    self.board_array = c_board
+
+    # This seems to be the case that handles if no white moves are possible
+    if len(rewards.keys()) == 0:
+        return
+
+    # Calculates white reward?
+    if self.white_move:
+        best = max(rewards.keys())
+        next_move = random.choice(rewards[best])
+        self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
+                    secondary, True)
+
+    # Calculates black reward?
+    else:
+        best = min(rewards.keys())
+        next_move = random.choice(rewards[best])
+        self.move(next_move[0][0], next_move[0][1], next_move[1][0], next_move[1][1],
+                    secondary, True)
+
 
 
 def get_next_csv_number() -> int:
