@@ -166,7 +166,7 @@ class Board:
     draw: bool = False
     logging: bool = False
     stop_probability: float = 0
-    white_policy: int = Policy.ONE_STEP_LOOKAHEAD
+    white_policy: int = Policy.LOOKAHEAD
     black_policy: int = Policy.RANDOM
     to_file = None
     last_move = ((0, 0), (0, 0))
@@ -441,8 +441,8 @@ class Board:
 
                 # only check secondary if move was made using random/onestep
                 check_secondary = \
-                    (self.white_move and (self.white_policy == Policy.RANDOM or self.white_policy == Policy.ONE_STEP_LOOKAHEAD)) \
-                    or (not self.white_move and self.black_policy == Policy.RANDOM or self.black_policy == Policy.ONE_STEP_LOOKAHEAD)
+                    (self.white_move and (self.white_policy == Policy.RANDOM or self.white_policy == Policy.LOOKAHEAD)) \
+                    or (not self.white_move and self.black_policy == Policy.RANDOM or self.black_policy == Policy.LOOKAHEAD)
 
                 if check_secondary:
                     next_moves = self.get_single_moves(next_x, next_y)
@@ -478,7 +478,7 @@ class Board:
             if self.white_move:
                 if self.white_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
-                elif self.white_policy == Policy.ONE_STEP_LOOKAHEAD:
+                elif self.white_policy == Policy.LOOKAHEAD:
                     self.lookahead_policy(actions, secondary, self.white_depth)
                 elif self.white_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
@@ -486,7 +486,7 @@ class Board:
             else:
                 if self.black_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
-                elif self.black_policy == Policy.ONE_STEP_LOOKAHEAD:
+                elif self.black_policy == Policy.LOOKAHEAD:
                     self.lookahead_policy(actions, secondary, self.black_depth)
                 elif self.black_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
@@ -709,15 +709,14 @@ class Board:
                                 # if piece can move, move it
                                 # single moves always has (starty, startx)->[], need to check if the list is empty
                                 if len(single_moves) != 0:
-                                    (y2, x2) = random.choice(single_moves)
+                                    (heuristic_y2, heuristic_x2) = random.choice(single_moves)
                                     print(f'white moving home piece')
                                     b.print_board()
-                                    if b.move(y, x, y2, x2, False, True):
+                                    if b.move(y, x, heuristic_y2, heuristic_x2, False, True):
                                         print('white moved home piece')
                                     else:
                                         print('white failed to move home piece')
                                     b.white_move = False
-                                    b.print_board()
                                     moved = True
                                     total_sim_rewards += (last_reward - b.reward())
                                     last_reward = b.reward()
@@ -727,7 +726,7 @@ class Board:
             # divide by num simulations to get avg reward
             avg_sim_reward: float = total_sim_rewards / M
             # add sim reward to one step lookahead reward
-            first_move_to_total_reward[((y1, x1), (y2, x2))] = avg_sim_reward + first_move_to_total_reward[((y1, x1), (y2, x2))]
+            first_move_to_total_reward[((y1, x1), (y2, x2))] += avg_sim_reward
 
         # make optimal rollout move on current board
         self.board_array = c_board
@@ -908,7 +907,7 @@ if __name__ == "__main__":
             while still_playing:
                 #  White
                 moves = current_board.get_possible_moves()
-                still_playing = current_board.play(False, moves, False)
+                still_playing = current_board.play(True, moves, False)
 
                 if not still_playing:
                     break
