@@ -486,6 +486,10 @@ class Board:
                     self.lookahead_policy(actions, secondary, self.white_depth)
                 elif self.white_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
+                elif self.white_policy == Policy.POLICY_GRADIENT:
+                    self.pi_theta_policy_gradient(actions, secondary)
+                elif self.white_policy == Policy.LSTD:
+                    self.lstd(actions, secondary)
 
             else:
                 if self.black_policy == Policy.RANDOM:
@@ -494,6 +498,10 @@ class Board:
                     self.lookahead_policy(actions, secondary, self.black_depth)
                 elif self.black_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
+                elif self.black_policy == Policy.POLICY_GRADIENT:
+                    self.pi_theta_policy_gradient(actions, secondary)
+                elif self.black_policy == Policy.LSTD:
+                    self.lstd(actions, secondary)
 
         else:
             self.print_board()
