@@ -6,6 +6,8 @@ import os
 import random
 import string
 
+from typing import Dict, List
+
 # Board manipulation
 import numpy as np
 import copy
@@ -15,6 +17,8 @@ from PolicyEnum import Policy
 # Constants for pieces
 BLACK = -1
 WHITE = 1
+
+MOVE_LIMIT = 500
 
 debug = False
 
@@ -166,6 +170,7 @@ class Board:
     to_file = None
     last_move = ((0, 0), (0, 0))
     board_stack = None
+    total_moves = 0
 
     # Setup the board in the default configuration
     def __init__(self, outfile=None):
@@ -251,7 +256,7 @@ class Board:
 
     def get_single_moves(self, y: int, x: int):
         """
-        Calculates all of the moves(captures) that a single piece can make
+        Calculates all of the captures that a single piece can make
         This function is used when the player captures a piece and needs to see if they can move that piece again
 
         :param y: y coordinate of the piece
@@ -430,12 +435,23 @@ class Board:
                 if debug:
                     print("Capture")
                 self.board_array[int((x + next_x) / 2)][int((y + next_y) / 2)] = 0
-                next_moves = self.get_single_moves(next_x, next_y)
-                self.play(auto, next_moves, True)
+
+                # only check secondary if move was made using random/onestep
+                check_secondary = \
+                    (self.white_move and (self.white_policy == Policy.RANDOM or self.white_policy == Policy.ONE_STEP_LOOKAHEAD)) \
+                    or (not self.white_move and self.black_policy == Policy.RANDOM or self.black_policy == Policy.ONE_STEP_LOOKAHEAD)
+
+                if check_secondary:
+                    next_moves = self.get_single_moves(next_x, next_y)
+                    self.play(auto, next_moves, True)
                 # if self.logging and not is_secondary:
                 #     self.board_stack.push_board(copy.deepcopy(self.board_array), None)
             if self.logging and not is_secondary:
                 self.board_stack.push_board(copy.deepcopy(self.board_array), None)
+
+            if self.total_moves > MOVE_LIMIT:
+                self.game_over = True
+            self.total_moves += 1
             return True
         return False
 
@@ -461,11 +477,15 @@ class Board:
                     self.random_policy(actions, secondary)
                 elif self.white_policy == Policy.ONE_STEP_LOOKAHEAD:
                     self.one_step_lookahead_policy(actions, secondary)
+                elif self.white_policy == Policy.ROLLOUTS:
+                    self.rollouts_policy(actions, secondary)
             else:
                 if self.black_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
                 elif self.black_policy == Policy.ONE_STEP_LOOKAHEAD:
                     self.one_step_lookahead_policy(actions, secondary)
+                elif self.black_policy == Policy.ROLLOUTS:
+                    self.rollouts_policy(actions, secondary)
         else:
             self.print_board()
             print(f"Moves: {actions}")
@@ -590,13 +610,104 @@ class Board:
 
     def rollouts_policy(self, actions, secondary):
         """
-        uses one step lookahead + simulates remainder of game using heuristic policy to choose action
+        Uses one step lookahead + simulates remainder of game using heuristic policy to choose action.
+        The opposing side's moves are simulated using a random policy.
+        The heuristic policy is to move the piece closest to home side in a random direction.
 
         :param actions: a dictionary of moves from starting location to ending location
         :param secondary: is this a subsequent move
         :return: void
         """
-        pass
+        # M = number of times to simulate rollout
+        M = 1
+        # create dict of first move to total rewards where total = one_step_lookahead + rollout_sim
+        # then take action with max total reward
+        first_move_to_total_reward: Dict[((int, int), (int, int)), float] = dict()
+        # first move to board used to simulate entire games and find rollout return
+        first_move_to_board: Dict[((int, int), (int, int)), Board] = dict()
+
+        c_board = copy.deepcopy(self.board_array)
+        # TODO generalize turn bool updates so policy can be used by white or black
+        # first calculate one_step_lookahead rewards
+        for (y1, x1), moves_list in actions.items():
+            for (y2, x2) in moves_list:
+                b = Board()
+                b.board_array = copy.deepcopy(self.board_array)
+                b.white_move = self.white_move
+                b.black_policy = Policy.RANDOM
+                b.white_policy = Policy.ROLLOUTS
+
+                last_reward = b.reward()
+                b.move(y1, x1, y2, x2, secondary, True)
+                b.white_move = False
+                first_move_to_board[((y1, x1), (y2, x2))] = b
+                first_move_to_total_reward[((y1, x1), (y2, x2))] = (last_reward - b.reward())
+
+        # now loop over each board and simulate to endgame, add rewards to total
+        for ((y1, x1), (y2, x2)), b in first_move_to_board.items():
+            print('---------------------------simulating next board')
+            total_sim_rewards: float = 0
+            # M = number of times to sim rollout
+            for _ in range(M):
+                while not b.game_over:
+                    print(f'before black moves randomly')
+                    b.print_board()
+                    sim_actions = b.get_possible_moves()
+                    last_reward = b.reward()
+                    # black makes random move
+                    b.random_policy(sim_actions, False)
+                    b.white_move = True
+
+                    total_sim_rewards += (last_reward - b.reward())
+                    last_reward = b.reward()
+
+                    # white moves piece closest to home side randomly
+                    # find closest home piece
+                    for y in reversed(range(8)):  # white home is bottom of board
+                        moved: bool = False
+                        for x in range(8):
+                            piece = b.board_array[y][x]
+                            if piece == WHITE:  # TODO change to work for current color, not only white
+                                # TODO inefficient because calculating all moves when we only care about one piece
+                                # default value -1 if (y,x) not in possible moves
+                                single_moves = b.get_possible_moves().get((y, x), -1)
+                                if single_moves == -1:
+                                    continue
+                                # if piece can move, move it
+                                # single moves always has (starty, startx)->[], need to check if the list is empty
+                                if len(single_moves) != 0:
+                                    (y2, x2) = random.choice(single_moves)
+                                    print(f'white moving home piece')
+                                    b.print_board()
+                                    if b.move(y, x, y2, x2, False, True):
+                                        print('white moved home piece')
+                                    else:
+                                        print('white failed to move home piece')
+                                    b.white_move = False
+                                    b.print_board()
+                                    moved = True
+                                    total_sim_rewards += (last_reward - b.reward())
+                                    last_reward = b.reward()
+                                    break
+                        if moved:  # make just one heuristic move and go back to black move
+                            break
+            # divide by num simulations to get avg reward
+            avg_sim_reward: float = total_sim_rewards / M
+            # add sim reward to one step lookahead reward
+            first_move_to_total_reward[((y1, x1), (y2, x2))] = avg_sim_reward + first_move_to_total_reward[((y1, x1), (y2, x2))]
+
+        # make optimal rollout move on current board
+        self.board_array = c_board
+        # find moves with max total reward
+        print(f'board before real move')
+        self.print_board()
+        if self.white_move:
+            # find key(first move) with highest value(reward)
+            best = max(first_move_to_total_reward, key=first_move_to_total_reward.get)
+        else:
+            best = min(first_move_to_total_reward, key=first_move_to_total_reward.get)
+
+        self.move(best[0][0], best[0][1], best[1][0], best[1][1], secondary, True)
 
 
 def get_next_csv_number() -> int:
@@ -628,11 +739,11 @@ if __name__ == "__main__":
     white_wins = 0
     for _ in range(200_000):
         with open("./game_records/" + str(get_next_csv_number()) + ".tsv", "w") as to_file:
-            current_board = Board(to_file)
+            current_board = Board('')
             current_board.white_move = False
 
-            current_board.black_policy = Policy.ONE_STEP_LOOKAHEAD
-            current_board.white_policy = Policy.ONE_STEP_LOOKAHEAD
+            current_board.black_policy = Policy.RANDOM
+            current_board.white_policy = Policy.ROLLOUTS
             still_playing: bool = True
 
             while still_playing:
@@ -653,7 +764,7 @@ if __name__ == "__main__":
                 white_wins += 1
             else:
                 black_wins += 1
-            # current_board.print_board()
+            current_board.print_board()
 
     print("Draws:", draws)
     print("White wins:", white_wins)
