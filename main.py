@@ -166,6 +166,8 @@ class Board:
     to_file = None
     last_move = ((0, 0), (0, 0))
     board_stack = None
+    black_depth = 1
+    white_depth = 1
 
     # Setup the board in the default configuration
     def __init__(self, outfile=None):
@@ -460,12 +462,12 @@ class Board:
                 if self.white_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
                 elif self.white_policy == Policy.ONE_STEP_LOOKAHEAD:
-                    self.one_step_lookahead_policy(actions, secondary)
+                    self.lookahead_policy(actions, secondary, self.white_depth)
             else:
                 if self.black_policy == Policy.RANDOM:
                     self.random_policy(actions, secondary)
                 elif self.black_policy == Policy.ONE_STEP_LOOKAHEAD:
-                    self.one_step_lookahead_policy(actions, secondary)
+                    self.lookahead_policy(actions, secondary, self.black_depth)
         else:
             self.print_board()
             print(f"Moves: {actions}")
@@ -554,10 +556,11 @@ class Board:
             else:
                 self.move(random_piece[0], random_piece[1], piece_move[0], piece_move[1], secondary, True)
 
-    def one_step_lookahead_policy(self, actions, secondary):
+    def lookahead_policy(self, actions, secondary, depth):
         """
         Calculates the reward from each piece and each action then takes the greatest rewards move.
 
+        :param depth: the number of lookahead steps
         :param actions: a dictionary of moves from starting location to ending location
         :param secondary: is this a subsequent move
         :return: void
@@ -567,12 +570,42 @@ class Board:
 
         for piece in actions.keys():
             for move in actions[piece]:
+                print(piece, move)
                 temp = Board()
                 temp.board_array = copy.deepcopy(self.board_array)
                 temp.white_move = self.white_move
+                temp.white_depth = self.white_depth
+                temp.black_depth = self.black_depth
+                # Make each move
                 temp.move(piece[0], piece[1], move[0], move[1], secondary, True)
+                # Flip the turn
+                temp.white_move = not temp.white_move
+                temp.print_board()
+
+                if depth != 1:
+                    temp.white_policy = self.white_policy
+                    temp.black_policy = self.black_policy
+                    if temp.white_move:
+                        temp.black_depth = depth - 1
+                    else:
+                        temp.white_depth = depth - 1
+
+                    # Opponents moves
+                    t_moves = temp.get_possible_moves()
+                    t_board = copy.deepcopy(temp.board_array)
+                    for p in t_moves.keys():
+                        for m in t_moves[p]:
+                            ntemp = Board()
+                            ntemp.board_array = copy.deepcopy(temp.board_array)
+                            ntemp.white_move = temp.white_move
+                            ntemp.move(p[0], p[1], m[0], m[1], False, True)
+                            temp.play(True, ntemp.get_possible_moves(), False)
+                    temp.board_array = t_board
+
                 add_move(rewards, temp.reward(), (piece, move))
         self.board_array = c_board
+        print("ENDING")
+        exit(-1)
 
         if len(rewards.keys()) == 0:
             return
@@ -626,19 +659,21 @@ if __name__ == "__main__":
     draws = 0
     black_wins = 0
     white_wins = 0
-    for _ in range(200_000):
+    for _ in range(1):
         with open("./game_records/" + str(get_next_csv_number()) + ".tsv", "w") as to_file:
-            current_board = Board(to_file)
-            current_board.white_move = False
+            current_board = Board()
+            current_board.white_move = True
 
-            current_board.black_policy = Policy.ONE_STEP_LOOKAHEAD
+            current_board.black_policy = Policy.RANDOM
+            current_board.black_depth = 1
             current_board.white_policy = Policy.ONE_STEP_LOOKAHEAD
+            current_board.white_depth = 2
             still_playing: bool = True
 
             while still_playing:
                 #  White
                 moves = current_board.get_possible_moves()
-                still_playing = current_board.play(True, moves, False)
+                still_playing = current_board.play(False, moves, False)
 
                 if not still_playing:
                     break
