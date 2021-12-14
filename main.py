@@ -486,11 +486,8 @@ class Board:
                 elif self.white_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
                 elif self.white_policy == Policy.POLICY_GRADIENT:
-
                     self.policy_gradient(actions, secondary)
-          
-
-                    self.pi_theta_policy_gradient(actions, secondary)
+                    #self.pi_theta_policy_gradient(actions, secondary)
                 elif self.white_policy == Policy.LSTD:
                     self.lstd(actions, secondary)
 
@@ -506,7 +503,8 @@ class Board:
                 #i'm not using policy gradient on black, for the sake of time
                 #the option is there but please don't use it
                 elif self.black_policy == Policy.POLICY_GRADIENT:
-                    self.pi_theta_policy_gradient(actions, secondary)
+                    self.policy_gradient(actions, secondary)
+                    #self.pi_theta_policy_gradient(actions, secondary)
                 elif self.black_policy == Policy.LSTD:
                     self.lstd(actions, secondary)
 
