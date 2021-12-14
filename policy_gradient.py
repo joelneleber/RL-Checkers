@@ -99,7 +99,7 @@ def softmax_policy(self, actions, secondary, theta):
                     secondary, True)
 
     
-def follow_pi_theta(self, actions, secondary, pi_theta):
+def follow_pi_theta(self, actions, secondary, theta):
     """
     Follows policy pi_theta (a softmax policy)
     from the current state to the end of the game
@@ -110,30 +110,72 @@ def follow_pi_theta(self, actions, secondary, pi_theta):
 
     c_board.white_move = False
 
-    c_board.black_policy = 1
-    c_board.white_policy = 1
+    c_board.black_policy = 0
+    c_board.white_policy = 5
 
     still_playing: bool = True
 
     while still_playing:
-        #  White
+        #  Get white moves
         moves = c_board.get_possible_moves()
-        still_playing = c_board.play(True, moves, False)
-        # make sure to calculate rewards at each step...
+        # get count of possible white moves
+        max_prob = 0
+        max_prob_move = ((0, 0), (0, 0))
 
-        if not still_playing:
-            break
+        for key, value in moves.items():
+            for m in value:
+                cur_prob = c_board.pi_theta_policy_gradient(moves, m, theta)
+                if cur_prob > max_prob:
+                    max_prob = cur_prob
+                    max_prob_move = m
+        c_board.move(max_prob_move[0][0], max_prob_move[0][1])
+        # check if still playing
+        if np.any(c_board.board_array < 0) and not np.any(c_board.board_array > 0):
+            #Black win
+            still_playing = False
+        elif np.any(c_board.board_array > 0) and not np.any(c_board.board_array < 0):
+            #White win
+            c_board.white_wins = True
+            still_playing = False
+        else:
+            #Draw
+            c_board.draw = True
+            still_playing = False
 
-        #  Black
+        # Black's turn
+        c_board.white_move = False
         moves = c_board.get_possible_moves()
-        still_playing = c_board.play(True, c_board.get_possible_moves(), False)
+        # random policy-- make a random move
+        random_piece = random.choice(list(moves.keys()))
+        if len(moves[random_piece]) != 0:
+            piece_move = random.choice(moves[random_piece])
+            if secondary:
+                if random.random() > c_board.stop_probability:
+                    c_board.move(random_piece[0], random_piece[1], piece_move[0], piece_move[1], True, True)
+            else:
+                c_board.move(random_piece[0], random_piece[1], piece_move[0], piece_move[1], secondary, True)
+
+
+        
+        # check if still playing
+        if np.any(c_board.board_array < 0) and not np.any(c_board.board_array > 0):
+            #Black win
+            still_playing = False
+        elif np.any(c_board.board_array > 0) and not np.any(c_board.board_array < 0):
+            #White win
+            c_board.white_wins = True
+            still_playing = False
+        else:
+            #Draw
+            c_board.draw = True
+            still_playing = False 
 
     if c_board.draw:
-        draws += 1
+        return 0
     elif c_board.white_wins:
-        white_wins += 1
+        return 1
     else:
-        black_wins += 1
+        return -1
     # current_board.print_board()
     
 

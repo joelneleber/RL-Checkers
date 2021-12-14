@@ -309,7 +309,7 @@ class Board:
                     self.board_array[y - 2][x - 2] == 0:
                 to_return[(y, x)].append((y - 2, x - 2))
         if debug:
-            self.print_board()
+            #self.print_board()
             print("potential next moves:", to_return)
         return to_return
 
@@ -415,7 +415,6 @@ class Board:
             possible_moves = self.get_single_moves(x, y)
         else:
             possible_moves = self.get_possible_moves()
-
         if self.game_over:
             return False
 
@@ -487,9 +486,14 @@ class Board:
                 elif self.white_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
                 elif self.white_policy == Policy.POLICY_GRADIENT:
+
+                    self.policy_gradient(actions, secondary)
+          
+
                     self.pi_theta_policy_gradient(actions, secondary)
                 elif self.white_policy == Policy.LSTD:
                     self.lstd(actions, secondary)
+
 
             else:
                 if self.black_policy == Policy.RANDOM:
@@ -498,13 +502,17 @@ class Board:
                     self.lookahead_policy(actions, secondary, self.black_depth)
                 elif self.black_policy == Policy.ROLLOUTS:
                     self.rollouts_policy(actions, secondary)
+
+                #i'm not using policy gradient on black, for the sake of time
+                #the option is there but please don't use it
                 elif self.black_policy == Policy.POLICY_GRADIENT:
                     self.pi_theta_policy_gradient(actions, secondary)
                 elif self.black_policy == Policy.LSTD:
                     self.lstd(actions, secondary)
 
+
         else:
-            self.print_board()
+            #self.print_board()
             print(f"Moves: {actions}")
             if secondary:
                 if len(actions) != 1 or len(actions[random.choice(list(actions.keys()))]) != 0:
@@ -555,6 +563,15 @@ class Board:
         if self.game_over:
             return
         if np.any(self.board_array < 0) and not np.any(self.board_array > 0):
+#<<<<<<< policygradient
+            #print("Black wins!")
+           # self.white_wins = False
+        #elif np.any(self.board_array > 0) and not np.any(self.board_array < 0):
+            #print("White wins!")
+         #   self.white_wins = True
+        #else:
+            #print("Draw!")
+#=======
             if self.real_game:
                 print("Black wins!")
         elif np.any(self.board_array > 0) and not np.any(self.board_array < 0):
@@ -564,6 +581,7 @@ class Board:
         else:
             if self.real_game:
                 print("Draw!")
+#>>>>>>> master
             self.draw = True
 
         self.game_over = True
@@ -617,7 +635,7 @@ class Board:
                 temp.move(piece[0], piece[1], move[0], move[1], secondary, True)
                 # Flip the turn
                 temp.white_move = not temp.white_move
-                temp.print_board()
+                #temp.print_board()
 
                 if depth != 1:
                     temp.white_policy = self.white_policy
@@ -657,6 +675,176 @@ class Board:
                       secondary, True)
 
 
+        
+    def follow_pi_theta(self, actions, secondary, theta):
+        """
+        Follows policy pi_theta (a softmax policy)
+        from the current state to the end of the game
+        and returns the reward z
+        """
+
+        c_board = Board()
+        c_board.board_array = copy.deepcopy(self.board_array)
+        c_board.white_move = True
+        #b.black_policy = Policy.RANDOM
+        #b.white_policy = Policy.ROLLOUTS
+        
+        #c_board = copy.deepcopy(self)
+        c_board.logging = False
+        #c_board.debug = True
+        still_playing: bool = True
+        #print("Starting a new game")
+        while still_playing:   
+            c_board.white_move = True
+            #c_board.print_board()
+            #  Get white moves
+            moves = c_board.get_possible_moves()
+            if len(moves) == 0:
+                    # check if still playing
+                if np.any(c_board.board_array < 0) and not np.any(c_board.board_array > 0):
+                    #Black win
+                    still_playing = False
+                elif np.any(c_board.board_array > 0) and not np.any(c_board.board_array < 0):
+                    #White win
+                    c_board.white_wins = True
+                    still_playing = False
+                else:
+                    #Draw
+                    c_board.draw = True
+                    still_playing = False 
+            else:
+                max_prob = 0
+                max_prob_move = ((0, 0), (0, 0))
+                max_prob_init = ((0, 0), (0, 0))
+
+                for key, value in moves.items():
+                    for m in value:
+                        cur_prob = c_board.pi_theta_policy_gradient(moves, (key[0], key[1], m[0], m[1]), theta)
+                        if cur_prob > max_prob:
+                            max_prob = cur_prob
+                            max_prob_move = m
+                            max_prob_init = key
+            
+            #print(max_prob_init)
+            #print(max_prob_move)
+            
+            #print("moves in pi:")
+            #print(moves)
+            #print(c_board.board_array)
+            result = c_board.move(max_prob_init[0], max_prob_init[1], max_prob_move[0], max_prob_move[1], False, True)
+            
+            #print(result)
+            # check if still playing
+            #c_board.print_board()
+            # Black's turn
+            c_board.white_move = False
+            moves = c_board.get_possible_moves()
+            
+            if len(moves) == 0:
+                     # check if still playing
+                if np.any(c_board.board_array < 0) and not np.any(c_board.board_array > 0):
+                    #Black win
+                    still_playing = False
+                elif np.any(c_board.board_array > 0) and not np.any(c_board.board_array < 0):
+                    #White win
+                    c_board.white_wins = True
+                    still_playing = False
+                else:
+                    #Draw
+                    c_board.draw = True
+                    still_playing = False 
+            else:
+                # random policy-- make a random move
+                random_piece = random.choice(list(moves.keys()))
+                if len(moves[random_piece]) != 0:
+                    piece_move = random.choice(moves[random_piece])
+                    if secondary:
+                        if random.random() > c_board.stop_probability:
+                            c_board.move(random_piece[0], random_piece[1], piece_move[0], piece_move[1], True, True)
+                    else:
+                        c_board.move(random_piece[0], random_piece[1], piece_move[0], piece_move[1], False, True)
+                #c_board.print_board()
+
+                #print("Keep playing")
+
+
+        if c_board.draw:
+            return 0
+        elif c_board.white_wins:
+            return 1
+        else:
+            return -1
+         
+    
+    def policy_gradient(self, actions, secondary):
+        """
+        Attempting to implement Algorithm 4.1 in Lecture 10 notes.
+
+        Inputs: 
+        A stochastic dynamic program
+        A feature function phi
+        Monte-Carlo sample size M (If time allows we will try multiple)
+        Step sizes \alpha_0,... 
+        Gradient bound \delta
+
+        Output: Parameter \theta \in R^K, used to construct the randomized policy
+
+        """ 
+        delta = 0.05 #once we get code running, we'll let it go for a while, see what it converges to, and set delta accordingly
+    
+        theta = np.array([2, 2, 2, 2, 2, 2, 2, 2]) #initialize theta arbitrarily
+        d = np.array([1, 1, 1, 1, 1, 1, 1, 1])
+
+        i = 0
+        #start with 20 trajectories
+        M = 20
+
+        #once we get code running, we'll let it go for a while, see what it converges to, and set delta accordingly
+        j = np.zeros(M)
+        #note that d[i] = d[0]
+        while np.linalg.norm(d[i]) >= delta: 
+            print(np.linalg.norm(d[i]))
+        #while i < 7:
+            #Sample M trajectories, following pi_theta_i
+            for n in range(10):
+                j[n] = self.follow_pi_theta(actions, secondary, theta)
+            #compute the gradient
+            sum_b = np.array([0, 0, 0, 0, 0, 0, 0, 0])
+
+            for piece in actions.keys():
+                for move in actions[piece]:
+                    sum_b = sum_b + (self.pi_theta_policy_gradient(actions, (piece[0], piece[1], move[0], move[1]), theta) * self.phi(self.board_array, (piece[0], piece[1], move[0], move[1])))
+            #change actions[0] later
+            #grad_P = self.phi(self.board_array, ()) - sum_b
+            grad_P = sum_b
+            #calculate d[i]
+            d[i] = -1/M * (np.sum(j) * np.sum(grad_P))
+            #calculate theta[i]
+            #note that 1/i+1 is just alpha
+            theta[i+1] = theta[i] + ((1/(i+1)) * d[i])
+            #increase i by 1
+            i = i + 1
+            if i == 7:
+                i = 0
+        #take theta and use it on a softmax policy; use this softmax policy to play the game
+        print(theta)
+
+        result = self.follow_pi_theta(actions, secondary, theta)
+
+        if result == -1:
+            print("Black wins!")
+        elif result == 1:
+            print("White wins!")
+        else:
+            print("Draw!")
+
+
+
+            
+
+
+
+
     def lstd(self, actions, secondary):
 
         """
@@ -681,6 +869,7 @@ class Board:
                 2.54135940e+04, 0.00000000e+00, -2.86437422e+05, 0.00000000e+00],
                [0.00000000e+00, -6.81156434e+05, 0.00000000e+00, 2.23253136e+05,
                 0.00000000e+00, 4.02372715e+04, 0.00000000e+00, 1.86621950e+03]]
+
 
 
     def rollouts_policy(self, actions, secondary):
@@ -730,6 +919,11 @@ class Board:
                     b.board_array = copy.deepcopy(start_board_array)
                     b.white_move = start_move
                 while not b.game_over:
+#<<<<<<< policygradient
+                    #print(f'before black moves randomly')
+                    #b.print_board()
+#=======
+#>>>>>>> master
                     sim_actions = b.get_possible_moves()
                     if b.game_over:  # getting moves updates gameover
                         break
@@ -763,10 +957,21 @@ class Board:
                                 # single moves always has (starty, startx)->[], need to check if the list is empty
                                 if len(single_moves) != 0:
                                     (heuristic_y2, heuristic_x2) = random.choice(single_moves)
+#<<<<<<< policygradient
+                                    #print(f'white moving home piece')
+                                    #b.print_board()
+                                    #if b.move(y, x, heuristic_y2, heuristic_x2, False, True):
+                                    #    print('white moved home piece')
+                                    #else:
+                                    #    print('white failed to move home piece')
+                                    #b.white_move = False
+                                    #moved = True
+#=======
                                     b.move(y, x, heuristic_y2, heuristic_x2, False, True)
                                     b.white_move = not b.white_move
                                     moved_or_game_over = True
 
+#>>>>>>> master
                                     total_sim_rewards += (last_reward - b.reward())
                                     last_reward = b.reward()
                                     break
@@ -781,8 +986,14 @@ class Board:
 
         # make optimal rollout move on current board
         self.board_array = c_board
+#<<<<<<< policygradient
+        # find moves with max total reward
+        #print(f'board before real move')
+        #self.print_board()
+#=======
 
         # find move with max total reward
+#>>>>>>> master
         if self.white_move:
             # find key(first move) with highest value(reward)
             best = max(first_move_to_total_reward, key=first_move_to_total_reward.get)
@@ -801,6 +1012,126 @@ class Board:
     #vro = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
     #vks = 0  # of our pieces that are vulnerable (opponent could take on their next turn)
     #vko = 0  # of the opponent's pieces that are vulnerable (we could take on this turn)
+
+    def phi(self, s, a):
+        '''
+        Our phi is now complex enough
+        that we can't just make it a lambda...
+
+        s: current state (the board (self.board))
+        a: an action to take--what will the effects of this action be on the state?
+
+        Calculate the phi of the state s of the board AFTER taking this action!
+        '''
+        #counts the number of each type of pieces on the board 
+        #(i.e. how many of our regular pieces, how how many of our kings, etc.)
+        #count_arr = np.bincount(self.board)
+        #ks = count_arr[2]
+        #ko = count_arr[-2]
+        #rs = count_arr[1]
+        #ro = count_arr[-2]
+
+        #a: an action to take--what will the effects of this action be on the state?
+        #action is a tuple containing a piece's x and y and a move's x and y
+
+        #For now let's assume we will only apply policy gradient to white
+        temp = Board()
+        temp.board_array = copy.deepcopy(self.board_array)
+        temp.white_move = True
+
+        # a[0] = x
+        # a[1] = y
+        # a[2] = new_x
+        # a[3] = new_y
+
+         
+        # Needs to not be a secondary move.
+        temp.move(a[0], a[1], a[2], a[3], False, True)
+ 
+        white_moves = temp.get_possible_moves()
+        temp.white_move = False
+        black_moves = temp.get_possible_moves()
+        temp.white_move = True
+        
+        vrs = 0
+        vro = 0
+        vks = 0
+        vko = 0
+
+        #add_move(dic, key, value)
+        #add_move(possible_moves, (y[i], x[i]), (y[i] + y_change, x[i] - 1))
+
+        
+        # Calculate everyone's "vulnerable" pieces...
+        for w_cur, w_poss in white_moves.items():
+            #w_cur[0] = y, w_cur[1] = x
+            #explore all possible moves from the current white piece
+            for pw_moves in w_poss:
+                #calculate vro
+                #1 - (-1)
+                if w_cur[1] - pw_moves[1] == 2:
+                    vro = vro + 1
+                #calculate vko
+                #1 - (-2)
+                if w_cur[1] - pw_moves[1] == 3:
+                    vko = vko + 1
+        for b_cur, b_poss in black_moves.items():
+            for pb_moves in b_poss:
+                #calculate vrs
+                #-1 - 1
+                if b_cur[1] - pb_moves[1] == -2:
+                    vrs = vrs + 1
+                #calculate vks
+                #-1 -2
+                if b_cur[1] - pb_moves[1] == -3:
+                    vks = vks + 1
+
+        ks = 0
+        ko = 0
+        rs = 0
+        ro = 0
+        for i in range(8):
+            for j in range(8):
+                if temp.board_array[i][j] == -2:
+                    ko = ko + 1
+                elif temp.board_array[i][j] == 2:
+                    ks = ks + 1
+                elif temp.board_array[i][j] == 1:
+                    rs = rs + 1
+                elif temp.board_array[i][j] == -1:
+                    ro = ro + 1
+
+        phi_result = np.array([2*ks, #ks
+                        -2*ko, #ko
+                            1 * rs, #rs
+                            -2 * ro, #ro
+                            -3*vrs,
+                            3*vro, 
+                            -5*vks, 
+                            5*vko])
+        
+        return phi_result
+
+    def pi_theta_policy_gradient(self, actions, current_action, theta):
+
+        """
+        A softmax policy that takes in weights "theta" from policy gradient
+
+        Policy number: 10
+
+        :param actions: a dictionary of moves from starting location to ending location
+        :param current_action: the action being passed into pi_theta(a tuple: (cur_x, cur_y, next_x, next_y))
+        :param secondary: is this a subsequent move
+        :param theta: weights theta for policy gradient
+
+        :return: the "probability" of this action being the best action to take
+        """
+        rewards = dict()
+
+        copiedarray = copy.deepcopy(self.board_array)
+
+        #"Denominator" of softmax policy
+        e_cur_a = np.exp((self.phi(copiedarray, current_action).T) @ theta)
 
     # def phi(self, s, a):
     #     '''
@@ -915,6 +1246,18 @@ class Board:
     #                 secondary, True)
 
 
+        #"Numerator" of softmax policy
+        e_cur_a_prime = 0
+        for piece in actions.keys():
+            for move in actions[piece]:
+                e_cur_a_prime = e_cur_a_prime + np.exp(self.phi(copiedarray, (piece[0], piece[1], move[0], move[1])).T @ theta)
+        
+        #now calculate the actual value of pi theta
+        pi_theta = e_cur_a/e_cur_a_prime
+
+        #return pi_theta; this is the "probability" that the action will be taken
+        return pi_theta
+
 def get_next_csv_number() -> int:
     """
     Return the next csv file number; use this to get the next file number to ensure that nothing is overwritten
@@ -942,6 +1285,7 @@ if __name__ == "__main__":
     draws = 0
     black_wins = 0
     white_wins = 0
+
     for _ in range(5):
         with open("./game_records/" + str(get_next_csv_number()) + ".tsv", "w") as to_file:
             current_board = Board()
